@@ -1,10 +1,8 @@
-import {ActivityIndicator, Button, Image, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
-
-import {HelloWave} from '@/components/HelloWave';
-import {ThemedView} from '@/components/ThemedView';
+import {ActivityIndicator, Alert, Button, Image, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 
 import {CameraCapturedPicture, CameraType, CameraView, useCameraPermissions} from 'expo-camera';
 import {useRef, useState} from "react";
+
 
 export default function HomeScreen() {
     const [facing, setFacing] = useState<CameraType>('back');
@@ -12,22 +10,8 @@ export default function HomeScreen() {
     const imageContainer = useRef<CameraView>(null);
     const [picture, setPicture] = useState<CameraCapturedPicture | undefined>(undefined);
     const [isLoading, setIsLoading] = useState(false);
-    const [isFound, setIsFound] = useState(false);
-
-    if (!permission) {
-        return <ThemedView style={styles.container}>
-            <HelloWave/>
-        </ThemedView>
-    }
-
-    if (!permission.granted) {
-        return (
-            <View style={styles.container}>
-                <Text style={styles.text}>Требуется разрешение на камеру!</Text>
-                <Button onPress={requestPermission} title="grant permission"/>
-            </View>
-        );
-    }
+    const [facesCount, setFacesCount] = useState(0);
+    const [foundCount, setFoundCount] = useState(0);
 
     function toggleCameraFacing() {
         setFacing(current => (current === 'back' ? 'front' : 'back'));
@@ -61,31 +45,40 @@ export default function HomeScreen() {
                     body
                 }).then(r => r.json());
                 console.log(faces);
-                if (faces.length == 0) {
-                    throw new Error("Лица не найдены")
-                } else if (faces.length > 1) {
-                    throw new Error("Пока не умею обрабатывать много лиц сразу")
-                } else {
-                    if (faces[0] > 0.5) {
-                        setIsFound(true);
-                    } else {
-                        setIsFound(false);
-                    }
-                }
-            } catch (e) {
-                console.error(e);
+                setFacesCount(faces.length);
+                setFoundCount(faces.filter(f => f >= 0.5).length);
+
+            } catch (e: any) {
+                Alert.alert('Возникла ошибка', e?.message);
                 setPicture(undefined);
-                setIsFound(false);
+                setFacesCount(0);
+                setFoundCount(0);
             } finally {
                 setIsLoading(false);
             }
         }
     };
 
-
     const onClearHandler = () => {
-        setIsFound(false);
+        setFacesCount(0);
+        setFoundCount(0);
         setPicture(undefined);
+    }
+
+
+    if (!permission) {
+        return <View style={styles.container}>
+            <Text style={styles.text}>Требуется разрешение на камеру!</Text>
+        </View>
+    }
+
+    if (!permission.granted) {
+        return (
+            <View style={styles.container}>
+                <Text style={styles.text}>Требуется разрешение на камеру!</Text>
+                <Button onPress={requestPermission} title="grant permission"/>
+            </View>
+        );
     }
 
     return (
@@ -101,7 +94,13 @@ export default function HomeScreen() {
                                 <Text style={styles.loadingText}>Анализируем...</Text>
                             </View>
                         ) : (
-                            <Text style={styles.text}>{`${isFound ? 'Однозначно' : 'Возможно'} любит рис!`}</Text>
+                            <Text style={styles.text}>
+                                {
+                                    facesCount == 1 ? `${foundCount == 1 ? 'Однозначно' : 'Возможно'} любит рис!` :
+                                        facesCount == 0 ? 'Никого не нашел...' :
+                                            foundCount == 0 ? 'Возможно любят рис!' : `Как минимум один любит рис!`
+                                }
+                            </Text>
                         )}
                     </View>
                 )}
