@@ -1,73 +1,29 @@
-import {Button, Image, PixelRatio, Platform, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
+import {ActivityIndicator, Button, Image, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 
 import {HelloWave} from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import {ThemedText} from '@/components/ThemedText';
 import {ThemedView} from '@/components/ThemedView';
 
-import {CameraType, CameraView, useCameraPermissions} from 'expo-camera';
+import {CameraCapturedPicture, CameraType, CameraView, useCameraPermissions} from 'expo-camera';
 import {useRef, useState} from "react";
-
-import {captureRef} from 'react-native-view-shot';
 
 export default function HomeScreen() {
     const [facing, setFacing] = useState<CameraType>('back');
     const [permission, requestPermission] = useCameraPermissions();
-    const imageContainer = useRef<View>(null);
-    const [capturedImage, setCapturedImage] = useState<string | null>(null);
+    const imageContainer = useRef<CameraView>(null);
+    const [picture, setPicture] = useState<CameraCapturedPicture | undefined>(undefined);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isFound, setIsFound] = useState(false);
 
     if (!permission) {
-        // Camera permissions are still loading.
-        return <ParallaxScrollView
-            headerBackgroundColor={{light: '#A1CEDC', dark: '#1D3D47'}}
-            headerImage={
-                <Image
-                    source={require('@/assets/images/partial-react-logo.png')}
-                    style={styles.reactLogo}
-                />
-            }>
-            <ThemedView style={styles.titleContainer}>
-                <ThemedText type="title">Welcome!</ThemedText>
-                <HelloWave/>
-            </ThemedView>
-            <ThemedView style={styles.stepContainer}>
-                <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-                <ThemedText>
-                    Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-                    Press{' '}
-                    <ThemedText type="defaultSemiBold">
-                        {Platform.select({
-                            ios: 'cmd + d',
-                            android: 'cmd + m',
-                            web: 'F12'
-                        })}
-                    </ThemedText>{' '}
-                    to open developer tools.
-                </ThemedText>
-            </ThemedView>
-            <ThemedView style={styles.stepContainer}>
-                <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-                <ThemedText>
-                    Tap the Explore tab to learn more about what's included in this starter app.
-                </ThemedText>
-            </ThemedView>
-            <ThemedView style={styles.stepContainer}>
-                <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-                <ThemedText>
-                    When you're ready, run{' '}
-                    <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-                    <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-                    <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-                    <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-                </ThemedText>
-            </ThemedView>
-        </ParallaxScrollView>
+        return <ThemedView style={styles.container}>
+            <HelloWave/>
+        </ThemedView>
     }
 
     if (!permission.granted) {
         return (
             <View style={styles.container}>
-                <Text style={styles.message}>We need your permission to show the camera</Text>
+                <Text style={styles.text}>Требуется разрешение на камеру!</Text>
                 <Button onPress={requestPermission} title="grant permission"/>
             </View>
         );
@@ -77,90 +33,160 @@ export default function HomeScreen() {
         setFacing(current => (current === 'back' ? 'front' : 'back'));
     }
 
-
     const takePicture = async () => {
         if (imageContainer.current) {
-            const targetPixelCount = 1080; // If you want full HD pictures
-            const pixelRatio = PixelRatio.get();
-            const pixels = targetPixelCount / pixelRatio;
+            try {
+                const photo = await imageContainer.current.takePictureAsync({
+                    quality: 1,
+                });
+                setPicture(photo);
 
-            const result = await captureRef(imageContainer, {
-                result: 'tmpfile',
-                height: pixels,
-                width: pixels,
-                quality: 1,
-                format: 'png',
-            });
-            setCapturedImage(result);
+                if (!photo) {
+                    return;
+                }
+                const body = new FormData();
+                body.append('file', {
+                    uri: photo.uri,
+                    name: 'photo.png',
+                    filename: 'imageName.png',
+                    type: 'image/png'
+                });
+                body.append('Content-Type', 'image/png');
+                setIsLoading(true);
+                const faces: any[] = await fetch('http://77.223.99.68:8080/recognize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'multipart/form-data'
+                    },
+                    body
+                }).then(r => r.json());
+                console.log(faces);
+                if (faces.length == 0) {
+                    throw new Error("Лица не найдены")
+                } else if (faces.length > 1) {
+                    throw new Error("Пока не умею обрабатывать много лиц сразу")
+                } else {
+                    if (faces[0] > 0.5) {
+                        setIsFound(true);
+                    } else {
+                        setIsFound(false);
+                    }
+                }
+            } catch (e) {
+                console.error(e);
+                setPicture(undefined);
+                setIsFound(false);
+            } finally {
+                setIsLoading(false);
+            }
         }
     };
 
+
+    const onClearHandler = () => {
+        setIsFound(false);
+        setPicture(undefined);
+    }
+
     return (
-        <View style={styles.container} ref={imageContainer}>
-            <CameraView style={styles.camera} facing={facing}>
-                <View style={styles.buttonContainer}>
-                    <TouchableOpacity style={styles.button} onPress={toggleCameraFacing}>
-                        <Text style={styles.text}>Flip Camera</Text>
+        <View style={styles.container}>
+            <View style={styles.content}>
+                {!picture && <CameraView style={styles.camera} facing={facing} ref={imageContainer}/>}
+                {picture && (
+                    <View style={styles.searchResults}>
+                        <Image source={{uri: picture.uri}} style={styles.preview}/>
+                        {isLoading ? (
+                            <View style={styles.loadingContainer}>
+                                <ActivityIndicator size="large" color="#0000ff"/>
+                                <Text style={styles.loadingText}>Анализируем...</Text>
+                            </View>
+                        ) : (
+                            <Text style={styles.text}>{`${isFound ? 'Однозначно' : 'Возможно'} любит рис!`}</Text>
+                        )}
+                    </View>
+                )}
+            </View>
+
+            <View style={styles.buttonContainer}>
+                {picture ? (
+                    <TouchableOpacity style={styles.button} onPress={onClearHandler}>
+                        <Text style={styles.buttonText}>Проверить еще</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.button} onPress={takePicture}>
-                        <Text style={styles.text}>Get Picture</Text>
-                    </TouchableOpacity>
-                </View>
-            </CameraView>
-            {capturedImage && <Image source={{uri: capturedImage}} style={styles.preview}/>}
+                ) : (
+                    <>
+                        <TouchableOpacity style={styles.button} onPress={toggleCameraFacing}>
+                            <Text style={styles.buttonText}>Переключить камеру</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.button} onPress={takePicture}>
+                            <Text style={styles.buttonText}>Проверить</Text>
+                        </TouchableOpacity>
+                    </>
+                )}
+            </View>
         </View>
     );
 }
-
 const styles = StyleSheet.create({
-    titleContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-    },
-    stepContainer: {
-        gap: 8,
-        marginBottom: 8,
-    },
-    reactLogo: {
-        height: 178,
-        width: 290,
-        bottom: 0,
-        left: 0,
-        position: 'absolute',
-    },
-
     container: {
         flex: 1,
-        justifyContent: 'center',
+        justifyContent: 'flex-end',
     },
-    message: {
-        textAlign: 'center',
-        paddingBottom: 10,
+    content: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     camera: {
         flex: 1,
+        width: '100%',
     },
-    buttonContainer: {
+    searchResults: {
         flex: 1,
-        flexDirection: 'row',
-        backgroundColor: 'transparent',
-        margin: 64,
-    },
-    button: {
-        flex: 1,
-        alignSelf: 'flex-end',
+        width: '100%',
+        justifyContent: 'center',
         alignItems: 'center',
+    },
+    preview: {
+        width: '100%',
+        height: '80%',
+        resizeMode: 'contain',
     },
     text: {
         fontSize: 24,
         fontWeight: 'bold',
-        color: 'white',
-    },
-
-    preview: {
+        color: 'black',
+        textAlign: 'center',
         marginTop: 20,
-        width: 200,
-        height: 300,
+    },
+    loadingContainer: {
+        alignItems: 'center',
+        marginTop: 20,
+    },
+    loadingText: {
+        fontSize: 18,
+        color: '#000',
+        marginTop: 10,
+    },
+    buttonContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        padding: 16,
+        backgroundColor: '#333',
+        borderTopWidth: 1,
+        borderTopColor: '#ccc',
+    },
+    button: {
+        padding: 10,
+        backgroundColor: '#555',
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        flex: 1,
+        marginHorizontal: 8,
+    },
+    buttonText: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: 'white',
     },
 });
