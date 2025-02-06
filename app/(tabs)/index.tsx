@@ -21,7 +21,7 @@ export default function HomeScreen() {
         if (imageContainer.current) {
             try {
                 const photo = await imageContainer.current.takePictureAsync({
-                    quality: 1,
+                    quality: 0.5,
                 });
                 setPicture(photo);
 
