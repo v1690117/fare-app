@@ -37,7 +37,7 @@ export default function HomeScreen() {
                 });
                 body.append('Content-Type', 'image/png');
                 setIsLoading(true);
-                const faces: any[] = await fetch('http://77.223.99.68:8080/recognize', {
+                const faces: any[] = await fetch('https://v1690117.com/fare/recognize', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'multipart/form-data'
